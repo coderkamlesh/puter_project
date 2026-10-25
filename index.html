@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Puter AI Chat</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Puter.js v2 SDK -->
+  <script src="https://js.puter.com/v2/"></script>
+</head>
+<body>
+  <div class="chat-app">
+    <div class="app-layout">
+      <!-- Collapsible Sidebar -->
+      <aside class="chat-sidebar" id="chat-sidebar">
+        <div class="sidebar-header">
+          <button id="new-chat-btn" class="btn-new-chat" type="button">
+            <span class="plus-icon">+</span>
+            <span>New Chat</span>
+          </button>
+        </div>
+
+        <div class="sessions-container">
+          <div class="sessions-label">Recent Chats</div>
+          <div id="sessions-list" class="sessions-list">
+            <!-- Dynamically populated from Puter KV Store -->
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <button id="clear-all-sessions-btn" class="btn-clear-history" type="button" title="Clear all saved chats">
+            🗑️ Clear All Chats
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <!-- Top Navigation & Controls Bar -->
+        <header class="chat-header">
+          <div class="header-left">
+            <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" type="button" title="Toggle Sidebar">☰</button>
+            <div class="brand-logo">✨</div>
+            <div class="brand-info">
+              <h1>Puter AI</h1>
+              <span class="sync-status" id="cloud-status">Connecting...</span>
+            </div>
+          </div>
+
+      <div class="header-controls">
+        <!-- Model Selector: DeepSeek Default, GPT-6.1 Sol second -->
+        <div class="control-group">
+          <label for="model-select">Model:</label>
+          <select id="model-select" class="select-pill" aria-label="Select AI Model">
+            <option value="deepseek/deepseek-v4.1-flash-1017" selected>DeepSeek V4.1 Flash (1017)</option>
+            <option value="openai/gpt-6.1-sol">GPT-6.1 Sol</option>
+          </select>
+        </div>
+
+        <!-- Reasoning Effort Selector -->
+        <div class="control-group">
+          <label for="reasoning-select">Reasoning:</label>
+          <select id="reasoning-select" class="select-pill" aria-label="Select Reasoning Effort">
+            <option value="high" selected>High (Default)</option>
+            <option value="max">Max (Deep Thinking)</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low (Fast)</option>
+            <option value="none">None (Disabled)</option>
+          </select>
+        </div>
+
+        <!-- System Instructions Trigger -->
+        <button id="system-prompt-btn" class="btn-icon" type="button" title="Edit System Instructions">
+          ⚙️ <span>System Prompt</span>
+        </button>
+
+        <!-- New / Clear Chat -->
+        <button id="clear-chat-btn" class="btn-icon" type="button" title="Start New Chat">
+          🧹 <span>New Chat</span>
+        </button>
+
+        <!-- Puter Auth Bar -->
+        <div class="auth-box" id="auth-box">
+          <span id="user-display" class="user-display" style="display: none;"></span>
+          <button id="sign-out-btn" class="btn-auth btn-secondary" type="button" style="display: none;">Sign Out</button>
+          <button id="sign-in-btn" class="btn-auth btn-primary" type="button">Sign In</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Chat Stream -->
+    <main class="chat-viewport" id="chat-viewport">
+      <div class="chat-container" id="chat-container">
+        <!-- Welcome Screen (shown when conversation is empty) -->
+        <div class="welcome-screen" id="welcome-screen">
+          <div class="welcome-icon">✨</div>
+          <h2>What can I help you build or explore today?</h2>
+          <p>Powered by Puter.js serverless AI with Multimodal Vision and Reasoning control.</p>
+
+          <div class="quick-prompts-grid">
+            <button class="quick-card" data-prompt="Explain how a distributed consensus algorithm works like Raft.">
+              <strong>Distributed Systems</strong>
+              <span>Explain Raft consensus simply</span>
+            </button>
+            <button class="quick-card" data-prompt="Analyze this code architecture and suggest production optimizations.">
+              <strong>Code Review</strong>
+              <span>Suggest production optimizations</span>
+            </button>
+            <button class="quick-card" data-prompt="Write a clean implementation of a LRU cache with O(1) operations.">
+              <strong>Data Structures</strong>
+              <span>Implement an O(1) LRU Cache</span>
+            </button>
+            <button class="quick-card" data-prompt="Give me a step-by-step roadmap to scale a web app to 1M users.">
+              <strong>System Design</strong>
+              <span>Roadmap for 1M concurrent users</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Conversation Messages Stream -->
+        <div class="messages-list" id="messages-list"></div>
+      </div>
+    </main>
+
+    <!-- Bottom Input Dock -->
+    <footer class="chat-dock">
+      <div class="dock-container">
+        <!-- Image Preview Tray -->
+        <div class="attachment-preview" id="attachment-preview" style="display: none;">
+          <img id="preview-img" src="" alt="Attachment Preview" />
+          <div class="preview-meta">
+            <span id="preview-name" class="preview-name">image.png</span>
+            <button id="remove-img-btn" type="button" class="remove-btn" title="Remove image">&times;</button>
+          </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chat-form" class="chat-form">
+          <!-- Hidden File Picker for Image Modality -->
+          <input type="file" id="image-input" accept="image/png, image/jpeg, image/webp, image/gif" style="display: none;" />
+
+          <button id="upload-btn" class="dock-btn upload-btn" type="button" title="Attach Image (PNG, JPG, WebP)">
+            📎
+          </button>
+
+          <textarea
+            id="chat-textarea"
+            class="chat-textarea"
+            rows="1"
+            placeholder="Send a message or attach an image... (Shift+Enter for new line)"
+            required
+          ></textarea>
+
+          <button type="submit" id="send-btn" class="dock-btn send-btn" title="Send Message">
+            ➔
+          </button>
+        </form>
+
+        <div class="dock-footnote">
+          <span>Puter Serverless AI Gateway • User-Pays cloud infrastructure</span>
+        </div>
+      </div>
+    </footer>
+      </div><!-- /.main-content -->
+    </div><!-- /.app-layout -->
+  </div><!-- /.chat-app -->
+
+  <!-- System Instructions Modal (Saved in Puter KV Database) -->
+  <div class="modal-overlay" id="system-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>⚙️</span>
+          <h3>System Instructions</h3>
+        </div>
+        <button id="close-modal-btn" class="close-modal-btn" type="button">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-desc">
+          Custom instructions determine the AI's persona, boundaries, and formatting.
+          These are securely persisted to your <strong>Puter Cloud Database (KV Store)</strong>.
+        </p>
+
+        <textarea
+          id="system-prompt-input"
+          class="system-textarea"
+          rows="7"
+          placeholder="e.g. You are a senior software architect. Answer concisely with production-grade code..."
+        ></textarea>
+
+        <div class="prompt-presets">
+          <span>Quick Presets:</span>
+          <button type="button" class="preset-pill" data-preset="architect">Software Architect</button>
+          <button type="button" class="preset-pill" data-preset="concise">Concise & Direct</button>
+          <button type="button" class="preset-pill" data-preset="socratic">Socratic Tutor</button>
+          <button type="button" class="preset-pill" data-preset="reset">Default</button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span id="save-status" class="save-status"></span>
+        <div class="modal-actions">
+          <button id="cancel-prompt-btn" class="btn btn-secondary" type="button">Cancel</button>
+          <button id="save-prompt-btn" class="btn btn-primary" type="button">Save to Puter DB</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
