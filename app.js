@@ -549,6 +549,128 @@ async function sendMessage(text) {
 }
 
 /**
+ * ==========================================
+ * 4. Markdown Formatter & Code Copy Engine
+ * ==========================================
+ */
+
+/**
+ * Robust, XSS-safe Markdown to HTML converter
+ * Supports bold, italics, headers, code blocks with copy button, inline code, and lists.
+ * @param {string} text
+ * @returns {string} Sanitized HTML
+ */
+function formatMarkdown(text) {
+  if (!text) return '';
+
+  // 1. Extract and store Code Blocks (```lang ... ```) so code contents are never altered
+  const codeBlocks = [];
+  let processed = text.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+    const placeholder = `__MD_CODE_BLOCK_${codeBlocks.length}__`;
+    codeBlocks.push({ lang: (lang || 'text').toLowerCase(), code: code.trim() });
+    return placeholder;
+  });
+
+  // 2. Escape HTML entities on remaining text to ensure complete XSS safety
+  processed = processed
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // 3. Headers (# ## ###)
+  processed = processed.replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>');
+  processed = processed.replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>');
+  processed = processed.replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>');
+
+  // 4. Bold and Italic formatting (***bold italic***, **bold**, *italic*)
+  processed = processed.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // 5. Inline Code (`code`)
+  processed = processed.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+  // 6. Horizontal Rules (---)
+  processed = processed.replace(/^---$/gim, '<hr class="md-hr" />');
+
+  // 7. Parse line-by-line for ordered lists, unordered lists, and clean paragraphs
+  const lines = processed.split('\n');
+  const formattedLines = [];
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+
+    // Ordered list: "1. Item"
+    const orderedMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      formattedLines.push(
+        `<div class="md-list-item"><span class="md-list-num">${orderedMatch[1]}.</span><div class="md-list-body">${orderedMatch[2]}</div></div>`
+      );
+      return;
+    }
+
+    // Unordered bullet list: "- Item" or "* Item" or "• Item"
+    const unorderedMatch = trimmed.match(/^[-*•]\s+(.*)$/);
+    if (unorderedMatch) {
+      formattedLines.push(
+        `<div class="md-list-item"><span class="md-list-bullet">•</span><div class="md-list-body">${unorderedMatch[1]}</div></div>`
+      );
+      return;
+    }
+
+    // Empty line produces clean structural spacing
+    if (!trimmed) {
+      formattedLines.push('<div class="md-gap"></div>');
+      return;
+    }
+
+    // Regular paragraph text
+    formattedLines.push(`<p class="md-para">${line}</p>`);
+  });
+
+  let html = formattedLines.join('');
+
+  // 8. Re-insert Code Blocks with Language Header and Copy Button
+  codeBlocks.forEach((block, index) => {
+    const placeholder = `__MD_CODE_BLOCK_${index}__`;
+    const escapedCode = block.code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const codeHtml = `
+      <div class="code-box">
+        <div class="code-box-header">
+          <span class="code-box-lang">${block.lang}</span>
+          <button type="button" class="code-copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <pre><code class="code-box-pre">${escapedCode}</code></pre>
+      </div>
+    `;
+
+    html = html.replace(placeholder, codeHtml);
+  });
+
+  return html;
+}
+
+/**
+ * Global helper to copy code block content to clipboard
+ */
+window.copyCode = function(button) {
+  const codeBox = button.closest('.code-box');
+  const codeElem = codeBox?.querySelector('code');
+  if (codeElem) {
+    navigator.clipboard.writeText(codeElem.innerText).then(() => {
+      button.textContent = 'Copied! ✓';
+      setTimeout(() => {
+        button.textContent = 'Copy';
+      }, 2000);
+    });
+  }
+};
+
+/**
  * Append message row to chat feed
  */
 function appendMessageUI(role, text, imageSrc = null, hasImagePlaceholder = false) {
@@ -580,7 +702,13 @@ function appendMessageUI(role, text, imageSrc = null, hasImagePlaceholder = fals
 
   const bubble = document.createElement('div');
   bubble.className = 'message-bubble';
-  bubble.textContent = text;
+
+  // Assistant messages get full rich markdown formatting; User messages get escaped text
+  if (role === 'assistant') {
+    bubble.innerHTML = formatMarkdown(text);
+  } else {
+    bubble.textContent = text;
+  }
 
   contentDiv.appendChild(bubble);
   row.appendChild(avatar);
